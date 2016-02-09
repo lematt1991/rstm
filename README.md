@@ -1,4 +1,5 @@
 RSTM Release 7 Notes
+-
 
 The latest RSTM release features the following changes:
 
