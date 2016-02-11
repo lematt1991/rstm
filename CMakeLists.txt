@@ -45,7 +45,6 @@ set(CMAKE_THREAD_PREFER_PTHREAD 1)
 find_package(Threads)
 find_package(OpenMP)
 
-
 # The threads package is sort of wonky in that it doesn't set any compile
 # flags, just a link flag.
 #
@@ -59,10 +58,13 @@ find_package(OpenMP)
 # try and add the LIBS_INIT to the CXXFLAGS. We deal with this by definining
 # another variable for the include-side
 #
-string(REGEX MATCH "-l" CMAKE_THREAD_LIBS_IS_LIB ${CMAKE_THREAD_LIBS_INIT})
-if (NOT CMAKE_THREAD_LIBS_IS_LIB)
-  set(CMAKE_THREAD_INCLUDE ${CMAKE_THREAD_LIBS_INIT})
-endif ()
+
+if(!CMAKE_THREAD_LIBS_INIT)
+  string(REGEX MATCH "-l" CMAKE_THREAD_LIBS_IS_LIB ${CMAKE_THREAD_LIBS_INIT} )
+  if (NOT CMAKE_THREAD_LIBS_IS_LIB)
+    set(CMAKE_THREAD_INCLUDE ${CMAKE_THREAD_LIBS_INIT})
+  endif ()
+endif()
 
 # Include all fo the relevant UserConfig modules.
 include (UserConfig.cmake)
