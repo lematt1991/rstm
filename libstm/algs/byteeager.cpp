@@ -161,7 +161,6 @@ namespace {
       while (true) {
           // mark my reader byte
           lock->set_read_byte(tx->id-1);
-	  //This requires a Store-Load Barrier!
           // if nobody has the write lock, we're done
           if (__builtin_expect(lock->owner == 0, true))
               return *addr;
