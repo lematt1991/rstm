@@ -35,7 +35,7 @@ int munmap(void * addr, size_t len)
     if (_munmap == NULL)
         _munmap = (int (*)(void *, size_t))dlsym(RTLD_NEXT, "munmap");
 
-    // wait for quietscence
+    // wait for quiescence
     tx_fence();
 
     // invoke the original lib function

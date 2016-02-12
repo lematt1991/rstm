@@ -26,6 +26,7 @@
 #include "stm/metadata.hpp"
 #include "stm/txthread.hpp"
 #include "../profiling.hpp" // Trigger::
+#include "common/platform.hpp"
 
 namespace stm
 {
@@ -41,6 +42,8 @@ namespace stm
       ByEAR, OrecEagerRedo, ByteEagerRedo, BitEagerRedo,
       RingALA, Nano, Swiss,
 
+      BytePrio,
+      
       ByEAUBackoff, ByEAUFCM, ByEAUNoBackoff, ByEAUHour,
       OrEAUBackoff, OrEAUFCM, OrEAUNoBackoff, OrEAUHour,
       OrecEager, OrecEagerHour, OrecEagerBackoff, OrecEagerHB,

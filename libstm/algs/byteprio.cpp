@@ -32,7 +32,7 @@ using stm::UndoLogEntry;
  *  circular dependencies.
  */
 namespace {
-  struct ByteEager
+  struct BytePrio
   {
       static TM_FASTCALL bool begin(TxThread*);
       static TM_FASTCALL void* read_ro(STM_READ_SIG(,,));
@@ -61,20 +61,20 @@ namespace {
 #endif
 
   /**
-   *  ByteEager begin:
+   *  BytePrio begin:
    */
   bool
-  ByteEager::begin(TxThread* tx)
+  BytePrio::begin(TxThread* tx)
   {
       tx->allocator.onTxBegin();
       return false;
   }
 
   /**
-   *  ByteEager commit (read-only):
+   *  BytePrio commit (read-only):
    */
   void
-  ByteEager::commit_ro(TxThread* tx)
+  BytePrio::commit_ro(TxThread* tx)
   {
       // read-only... release read locks
       foreach (ByteLockList, i, tx->r_bytelocks)
@@ -85,10 +85,10 @@ namespace {
   }
 
   /**
-   *  ByteEager commit (writing context):
+   *  BytePrio commit (writing context):
    */
   void
-  ByteEager::commit_rw(TxThread* tx)
+  BytePrio::commit_rw(TxThread* tx)
   {
       // release write locks, then read locks
       foreach (ByteLockList, i, tx->w_bytelocks)
@@ -104,10 +104,10 @@ namespace {
   }
 
   /**
-   *  ByteEager read (read-only transaction)
+   *  BytePrio read (read-only transaction)
    */
   void*
-  ByteEager::read_ro(STM_READ_SIG(tx,addr,))
+  BytePrio::read_ro(STM_READ_SIG(tx,addr,))
   {
       uint32_t tries = 0;
       bytelock_t* lock = get_bytelock(addr);
@@ -138,10 +138,10 @@ namespace {
   }
 
   /**
-   *  ByteEager read (writing transaction)
+   *  BytePrio read (writing transaction)
    */
   void*
-  ByteEager::read_rw(STM_READ_SIG(tx,addr,))
+  BytePrio::read_rw(STM_READ_SIG(tx,addr,))
   {
       uint32_t tries = 0;
       bytelock_t* lock = get_bytelock(addr);
@@ -175,10 +175,10 @@ namespace {
   }
 
   /**
-   *  ByteEager write (read-only context)
+   *  BytePrio write (read-only context)
    */
   void
-  ByteEager::write_ro(STM_WRITE_SIG(tx,addr,val,mask))
+  BytePrio::write_ro(STM_WRITE_SIG(tx,addr,val,mask))
   {
       uint32_t tries = 0;
       bytelock_t* lock = get_bytelock(addr);
@@ -210,10 +210,10 @@ namespace {
   }
 
   /**
-   *  ByteEager write (writing context)
+   *  BytePrio write (writing context)
    */
   void
-  ByteEager::write_rw(STM_WRITE_SIG(tx,addr,val,mask))
+  BytePrio::write_rw(STM_WRITE_SIG(tx,addr,val,mask))
   {
       uint32_t tries = 0;
       bytelock_t* lock = get_bytelock(addr);
@@ -250,10 +250,10 @@ namespace {
   }
 
   /**
-   *  ByteEager unwinder:
+   *  BytePrio unwinder:
    */
   stm::scope_t*
-  ByteEager::rollback(STM_ROLLBACK_SIG(tx, except, len))
+  BytePrio::rollback(STM_ROLLBACK_SIG(tx, except, len))
   {
       PreRollback(tx);
 
@@ -278,39 +278,39 @@ namespace {
       return PostRollback(tx, read_ro, write_ro, commit_ro);
   }
 
-  /**
-   *  ByteEager in-flight irrevocability:
+  /** 
+   *  BytePrio in-flight irrevocability:
    */
-  bool ByteEager::irrevoc(TxThread*)
+  bool BytePrio::irrevoc(TxThread*)
   {
       return false;
   }
 
   /**
-   *  Switch to ByteEager:
+   *  Switch to BytePrio:
    */
-  void ByteEager::onSwitchTo() {
+  void BytePrio::onSwitchTo() {
   }
 }
 
 namespace stm {
   /**
-   *  ByteEager initialization
+   *  BytePrio initialization
    */
   template<>
-  void initTM<ByteEager>()
+  void initTM<BytePrio>()
   {
       // set the name
-      stms[ByteEager].name      = "ByteEager";
+      stms[BytePrio].name      = "BytePrio";
 
       // set the pointers
-      stms[ByteEager].begin     = ::ByteEager::begin;
-      stms[ByteEager].commit    = ::ByteEager::commit_ro;
-      stms[ByteEager].read      = ::ByteEager::read_ro;
-      stms[ByteEager].write     = ::ByteEager::write_ro;
-      stms[ByteEager].rollback  = ::ByteEager::rollback;
-      stms[ByteEager].irrevoc   = ::ByteEager::irrevoc;
-      stms[ByteEager].switcher  = ::ByteEager::onSwitchTo;
-      stms[ByteEager].privatization_safe = true;
+      stms[BytePrio].begin     = ::BytePrio::begin;
+      stms[BytePrio].commit    = ::BytePrio::commit_ro;
+      stms[BytePrio].read      = ::BytePrio::read_ro;
+      stms[BytePrio].write     = ::BytePrio::write_ro;
+      stms[BytePrio].rollback  = ::BytePrio::rollback;
+      stms[BytePrio].irrevoc   = ::BytePrio::irrevoc;
+      stms[BytePrio].switcher  = ::BytePrio::onSwitchTo;
+      stms[BytePrio].privatization_safe = true;
   }
 }

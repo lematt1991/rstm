@@ -55,6 +55,7 @@ set(sources
   algs/tli.cpp
   algs/tml.cpp
   algs/tmllazy.cpp
+  algs/byteprio.cpp
   policies/cbr.cpp
   policies/policies.cpp
   policies/static.cpp
@@ -67,7 +68,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "SunOS")
 endif ()
 
 set(mmapwrapsources hooks.cpp)
-  
+
 # build 32 and/or 64 bit libraries for intercepting munmap, so that we can
 # avoid a problem when nontransactional code munmaps privatized memory that
 # is still being accessed by doomed transactions

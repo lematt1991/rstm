@@ -45,6 +45,10 @@ set(CMAKE_THREAD_PREFER_PTHREAD 1)
 find_package(Threads)
 find_package(OpenMP)
 
+if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  set(CMAKE_MACOSX_RPATH 1)
+endif ()
+
 # The threads package is sort of wonky in that it doesn't set any compile
 # flags, just a link flag.
 #
