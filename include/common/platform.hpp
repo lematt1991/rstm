@@ -431,4 +431,22 @@ inline uint64_t getElapsedTime()
 
 #endif // STM_OS_SOLARIS
 
+#ifdef STM_OS_DARWIN
+#include <mach/mach_time.h>
+#include <mach/mach.h>
+#include <sched.h>
+
+/**
+ *  Yield the CPU
+ */
+inline void yield_cpu() { sched_yield(); }
+
+inline uint64_t getElapsedTime(){
+    return mach_absolute_time();
+    //return (time * timer_scaling_factor_numer) / timer_scaling_factor_denom;    
+}
+
+
+#endif //STM_OS_DARWIN
+
 #endif // PLATFORM_HPP__
