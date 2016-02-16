@@ -392,6 +392,14 @@ namespace stm
 #endif
   }
 
+    inline void bytelock_t::set_read_byte_val(uint32_t id, uint32_t val){
+#if defined(STM_CPU_SPARC)
+	reader[id] = (uint8_t)val; WBR;
+#else
+	atomicswap8(&reader[id], (uint8_t)val);
+#endif
+    }
+
   /*** set a bit */
   inline void rrec_t::setbit(unsigned slot)
   {

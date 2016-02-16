@@ -107,6 +107,9 @@ namespace stm
        *      but not visible globally
        */
       void set_read_byte(uint32_t id);
+
+      //set the read byte with a particular value (such as a priority).
+      void set_read_byte_val(uint32_t id, uint32_t val);
   };
 
   /**
