@@ -85,6 +85,8 @@ namespace stm
       nanorec_t(orec_t* _o, uintptr_t _v) : o(_o), v(_v) { }
   };
 
+#define BYTELOCK_READERS (CACHELINE_BYTES - sizeof(uint32_t))
+
   /**
    *  TLRW-style algorithms don't use orecs, but instead use "byte locks".
    *  This is the type of a byte lock.  We have 32 bits for the lock, and
