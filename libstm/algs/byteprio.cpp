@@ -112,6 +112,9 @@ namespace {
     void
     BytePrio::commit_rw(TxThread* tx)
     {
+	tx->writes.writeback();
+	CFENCE;
+	
 	// release write locks, then read locks
 	foreach (ByteLockList, i, tx->w_bytelocks)
 	    (*i)->owner = 0;
