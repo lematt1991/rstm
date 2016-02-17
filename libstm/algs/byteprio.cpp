@@ -23,9 +23,6 @@
  *           - this way we can systematically break ties and avoid livelock
  *           - We won't be able to acquire locks with this value, but we could
  *             still look it up given the offset of the bytelock
- *   - Make the `alive` field a `*TxThread`.  A thread can then force another
- *     to abort by CASing itself into this field.
- *           - What if multiple threads try to cancel a single thread at the same time????
  */
 
 #include "../profiling.hpp"
@@ -42,11 +39,11 @@ using stm::WriteSetEntry;
 
 #define GET_WR_PRIO(x) (x & 0xFFFF)
 #define GET_WR_ID(x) (x & 0xFFFF0000)
-#define MK_LOCK_VAL(id, prio) ((id << 16) | prio)
+#define MK_LOCK_VAL(id, prio) ((prio << 16) | id)
 
-#define RUNNING 0u
-#define ABORTED(x) x  //nonzero value
-
+#define RUNNING    1u
+#define ABORTED    2u
+#define COMMITTING 3u
 /**
  *  Declare the functions that we're going to implement, so that we can avoid
  *  circular dependencies.
@@ -98,6 +95,10 @@ namespace {
     void
     BytePrio::commit_ro(TxThread* tx)
     {
+	if(!bcas32(&tx->alive, RUNNING, COMMITTING)){
+	    tx->tmabort(tx);
+	}
+
 	// read-only... release read locks
 	foreach (ByteLockList, i, tx->r_bytelocks)
 	    (*i)->reader[tx->id-1] = 0;
@@ -112,6 +113,10 @@ namespace {
     void
     BytePrio::commit_rw(TxThread* tx)
     {
+	if(!bcas32(&tx->alive, RUNNING, COMMITTING)){
+	    tx->tmabort(tx);
+	}
+
 	tx->writes.writeback();
 	CFENCE;
 	
@@ -144,31 +149,29 @@ namespace {
     void*
     BytePrio::read_rw(STM_READ_SIG(tx,addr,))
     {
-	if(tx->alive > 0){ //ABORTED
+	if(tx->alive == ABORTED){
 	    tx->tmabort(tx);
 	}
       
 	uint32_t tries = 0;
 	bytelock_t* lock = get_bytelock(addr);
 
-	if(GET_WR_PRIO(lock->owner) == tx->id){
+	//write lock already acquired
+	if(GET_WR_PRIO(lock->owner) == tx->id){ 
 	    WriteSetEntry log(STM_WRITE_SET_ENTRY(addr, NULL, mask));
-	    if(tx->writes.find(log))
+	    if(tx->writes.find(log))  //did we acquire the lock for this address?
 		return log.val;
-	    return *addr;
+	    return *addr;  //acquired lock for another address that hashes to this bytelock
 	}
 
-	// do I have a read lock?
-	if (lock->reader[tx->id-1] == 1)
+	if (lock->reader[tx->id-1] == 1) //do I have a read lock?
 	    return *addr;
 
-	// log this location
-	tx->r_bytelocks.insert(lock);
+	tx->r_bytelocks.insert(lock);  //record bytelock
 
 	// now try to get a read lock
 	while (true) {
-	    // mark my reader byte
-	    lock->set_read_byte_val(tx->id-1, tx->prio);
+	    lock->set_read_byte_val(tx->id-1, tx->prio); //mark reader byte
 
 	    // if nobody has the write lock, we're done
 	    if (__builtin_expect(lock->owner == 0, true))
@@ -177,19 +180,19 @@ namespace {
 	    while (lock->owner != 0) {
 		if (++tries > READ_TIMEOUT){
 		    uint32_t owner = lock->owner;
-		    //writer has higher priority than me, I'll abort...
-		    if(GET_WR_PRIO(owner) > tx->prio){
+		    //writer has higher priority, I'll abort
+		    if(owner > MK_WR_PRIO(tx->id, tx->prio)){
 			tx->tmabort(tx);
 		    }
 		    //I have higher priority, so force the writer to abort
-		    atomicswap32(&stm::threads[GET_WR_ID(owner)]->alive, ABORTED(tx->id));
+		    atomicswap32(&stm::threads[GET_WR_ID(owner)]->alive, ABORTED);
 		    if(lock->owner == owner){
 			return *addr;
 		    }
 
-		    //another writer locked it, so do the check again
+		    //another writer locked it (or it's unlocked), so do the check again
 		    tries = 0;
-		    break; //We could just abort here, but try spinning in the hopes that they will be quick.
+		    break;
 		}
 	    }
 	}
@@ -205,14 +208,14 @@ namespace {
     void
     BytePrio::write_rw(STM_WRITE_SIG(tx,addr,val,mask))
     {
-	if(tx->alive > RUNNING){
+	if(tx->alive == ABORTED){
 	    tx->tmabort(tx);  //someone aborted us
 	}
       
 	uint32_t tries = 0;
 	bytelock_t* lock = get_bytelock(addr);
 
-	// If I have the write lock, backup old value, do write, return
+	// If I have the write lock, buffer this write and return
 	if (lock->owner == tx->id) {         
 	    tx->writes.insert(WriteSetEntry(STM_WRITE_SET_ENTRY(addr, val, mask)));
 	    return;
@@ -225,7 +228,7 @@ namespace {
 		uint32_t owner = lock->owner;
 		//use thread ID to break ties
 		if(GET_WR_PRIO(owner) < tx->prio || (GET_WR_PRIO(owner) == tx->prio && GET_WR_ID(owner) < tx->id)){
-		    if(!bcas32(&stm::threads[GET_WR_ID(owner)]->alive, RUNNING, ABORTED(tx->id)))
+		    if(!bcas32(&stm::threads[GET_WR_ID(owner)]->alive, RUNNING, ABORTED))
 			continue; //they are either committing, or they were aborted by someone else
 		    if(!bcas32(&lock->owner, owner, lock_val))
 			continue; //someone else stole the lock, or they unlocked it.  Should we reset tries?
@@ -236,7 +239,6 @@ namespace {
 		    OnFirstWrite(tx, read_rw, write_rw, commit_rw);
 		    //no need to check for readers since we stole this from a writer
 		    return;
-		    
 		}
 		tx->tmabort(tx);
 	    }
@@ -263,7 +265,7 @@ namespace {
 		    //kill all readers
 		    for(int j = i * 4; j < BYTELOCK_READERS; j++){
 			if(lock->reader[j] != 0){
-			    stm::threads[j]->alive = ABORTED(tx->id);
+			    stm::threads[j]->alive = ABORTED;
 			}
 		    }
 		    //buffer write
