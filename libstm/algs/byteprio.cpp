@@ -190,7 +190,10 @@ namespace {
 			tx->tmabort(tx);
 		    }
 		    //I have higher priority, so force the writer to abort
-		    atomicswap32(&(stm::threads[GET_WR_ID(owner)-1]->alive), ABORTED);
+		    if(!bcas32(&(stm::threads[GET_WR_ID(owner)-1]->alive), RUNNING, ABORTED)){
+			//they are already in the process of committing, just wait a bit longer...
+			break;
+		    }
 		    if(lock->owner == owner){
 			return *addr;
 		    }
@@ -217,7 +220,7 @@ namespace {
 	if(tx->alive == ABORTED){
 	    tx->tmabort(tx);  //someone aborted us
 	}
-      
+	
 	uint32_t tries = 0;
 	bytelock_t* lock = get_bytelock(addr);
 	uint32_t owner;
@@ -243,15 +246,15 @@ namespace {
 		    OnFirstWrite(tx, read_rw, write_rw, commit_rw);
 		    //no need to check for readers since we stole this from a writer
 		    return;
-		}  
+		}
 		tx->tmabort(tx);
 	    }
 	}
-      
+	
 	// log the lock, drop any read locks I have
 	tx->w_bytelocks.insert(lock);
 	lock->reader[tx->id-1] = 0;
-
+	
 	// wait (with timeout) for readers to drain out
 	// if we timeout but have higher priority than ALL readers, abort them all
 	// and continue 
