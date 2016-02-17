@@ -41,6 +41,8 @@
 
 int* matrix;
 
+int ** local_mats;
+
 /**
  *  Step 3:
  *    Declare an instance of the data type, and provide init, test, and verify
@@ -51,34 +53,56 @@ int* matrix;
 void bench_init()
 {
     matrix = (int*)malloc(CFG.elements * sizeof(int));
+
+    local_mats = (int**)malloc(sizeof(int*));
+    
+    for(int i = 0; i < CFG.threads; i++){
+	local_mats[i] = (int*)malloc(sizeof(int) * CFG.elements);
+    }
 }
 
 /*** Run a bunch of random transactions */
-void bench_test(uintptr_t, uint32_t* seed)
+void bench_test(uintptr_t id, uint32_t* seed)
 {
-    // cache the seed locally so we can restore it on abort
-    //
-    // NB: volatile needed because using a non-volatile local in conjunction
-    //     with a setjmp-longjmp control transfer is undefined, and gcc won't
-    //     allow it with -Wall -Werror.
-    volatile uint32_t local_seed = *seed;
+    uint32_t loc[1024];
+    int snapshot[1024];
 
+    //determine the locations prior to the transaction
+    for(uint32_t i = 0; i < CFG.ops; i++){
+	uint32_t r = rand_r(seed) % CFG.elements;
+	local_mats[id][r]++;
+	loc[i] = r;
+    }
+    
     TM_BEGIN(atomic) {
-        int snapshot[1024];
-        uint32_t loc[1024];
         for (uint32_t i = 0; i < CFG.ops; ++i) {
-            loc[i] = rand_r((uint32_t*)&local_seed) % CFG.elements;
             snapshot[i] = TM_READ(matrix[loc[i]]);
         }
         for (uint32_t i = 0; i < CFG.ops; ++i) {
             TM_WRITE(matrix[loc[i]], 1 + snapshot[i]);
         }
     } TM_END;
-    *seed = local_seed;
 }
 
 /*** Ensure the final state of the benchmark satisfies all invariants */
-bool bench_verify() { return true; }
+bool bench_verify() {
+    
+    for(int i = 0; i < CFG.threads; i++){
+	for(int j = 0; j < CFG.ops; j++){
+	    matrix[j] -= local_mats[i][j];
+	}
+    }
+
+    bool passed = true;
+    
+    for(int i = 0; i < CFG.ops; i++){
+	if(matrix[i] != 0){
+	    printf("Nonzero entry (%d) at position %d\n", matrix[i], i);
+	    passed = false;
+	}
+    }
+    return passed;
+}
 
 /**
  *  Step 4:
